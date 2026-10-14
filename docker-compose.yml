@@ -1,0 +1,89 @@
+version: '3.8'
+name: sandboxdev
+
+services:
+  squid-proxy:
+    image: ubuntu/squid:latest
+    container_name: squid-proxy
+    volumes:
+      - ./squid.conf:/etc/squid/squid.conf:z
+    networks:
+      - internal_only
+      - internet
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/3128' || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s  
+  headroom:
+    image: ghcr.io/chopratejas/headroom:latest
+    container_name: headroom
+    restart: unless-stopped
+    volumes:
+      - ${XDG_RUNTIME_DIR}/podman/podman.sock:/var/run/docker.sock:ro
+    ports:
+      - "8787:8787"
+    environment:
+      - HEADROOM_LOG_LEVEL=INFO
+      - HEADROOM_HOST=0.0.0.0
+      - HEADROOM_PORT=8787
+      - HEADROOM_MODE=token
+      - OPENAI_TARGET_API_URL=https://openrouter.ai/api/v1
+      - http_proxy=http://squid-proxy:3128
+      - https_proxy=http://squid-proxy:3128
+      - HTTP_PROXY=http://squid-proxy:3128
+      - HTTPS_PROXY=http://squid-proxy:3128
+      - no_proxy="localhost,127.0.0.1"
+      - NO_PROXY="localhost,127.0.0.1"
+    networks:
+      - internal_only
+    depends_on:
+      squid-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --noproxy '*' --fail --silent http://127.0.0.1:8787/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+  opencode:
+    build: .
+    image: opencode:local
+    container_name: opencode
+    stdin_open: true
+    tty: true
+    depends_on:
+      headroom:
+        condition: service_healthy
+    env_file:
+      - path: ./.env
+        required: true
+      - path: ./.env.local
+        required: false
+    volumes:
+      - ${WORKSPACE_DIR}:/workspace:z
+      - ./opencode.jsonc.local:/home/opencode/.config/opencode/opencode.jsonc:ro,z
+      - opencode-local:/home/opencode/.local:rw
+    networks:
+      - internal_only
+    working_dir: /workspace
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+    pids_limit: 100
+
+networks:
+  internal_only:
+    internal: true
+  internet: {}
+
+volumes:
+  opencode-local:
