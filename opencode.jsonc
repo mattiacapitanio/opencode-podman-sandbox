@@ -1,0 +1,15 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "providers": {
+      "headroom": {
+        "name": "Headroom Proxy",
+        "package": "@opencode/ai/providers/openai-compatible",
+        "settings": {
+          "baseURL": "http://headroom:8787/v1",
+          "apiKey": "Your_Api_Key_Here"
+        },
+        "models": {
+        }
+      }
+    }
+  }
